@@ -1,0 +1,235 @@
+diff --color -Naur bash-5.1-orig/lib/readline/bind.c bash-5.1-new/lib/readline/bind.c
+--- bash-5.1-orig/lib/readline/bind.c	2020-10-26 07:03:14.000000000 -0700
++++ bash-5.1-new/lib/readline/bind.c	2021-01-01 08:43:25.633477558 -0800
+@@ -2087,19 +2087,6 @@
+ static int
+ sv_histsize (const char *value)
+ {
+-  int nval;
+-
+-  nval = 500;
+-  if (value && *value)
+-    {
+-      nval = atoi (value);
+-      if (nval < 0)
+-	{
+-	  unstifle_history ();
+-	  return 0;
+-	}
+-    }
+-  stifle_history (nval);
+   return 0;
+ }
+ 
+diff --color -Naur bash-5.1-orig/lib/readline/history.c bash-5.1-new/lib/readline/history.c
+--- bash-5.1-orig/lib/readline/history.c	2017-02-27 12:39:25.000000000 -0800
++++ bash-5.1-new/lib/readline/history.c	2021-01-01 08:49:43.834998903 -0800
+@@ -75,7 +75,7 @@
+ 
+ /* Non-zero means that we have enforced a limit on the amount of
+    history that we save. */
+-static int history_stifled;
++#define history_stifled 0
+ 
+ /* The current number of slots allocated to the input_history. */
+ static int history_size;
+@@ -107,8 +107,6 @@
+   state->length = history_length;
+   state->size = history_size;
+   state->flags = 0;
+-  if (history_stifled)
+-    state->flags |= HS_STIFLED;
+ 
+   return (state);
+ }
+@@ -121,8 +119,6 @@
+   history_offset = state->offset;
+   history_length = state->length;
+   history_size = state->size;
+-  if (state->flags & HS_STIFLED)
+-    history_stifled = 1;
+ }
+ 
+ /* Begin a session in which the history functions might be used.  This
+@@ -268,62 +264,34 @@
+ 
+ /* Place STRING at the end of the history list.  The data field
+    is  set to NULL. */
+-void
+-add_history (const char *string)
+-{
+-  HIST_ENTRY *temp;
+-  int new_length;
+-
+-  if (history_stifled && (history_length == history_max_entries))
+-    {
+-      register int i;
+-
+-      /* If the history is stifled, and history_length is zero,
+-	 and it equals history_max_entries, we don't save items. */
+-      if (history_length == 0)
+-	return;
+-
+-      /* If there is something in the slot, then remove it. */
+-      if (the_history[0])
+-	(void) free_history_entry (the_history[0]);
+-
+-      /* Copy the rest of the entries, moving down one slot.  Copy includes
+-	 trailing NULL.  */
+-      memmove (the_history, the_history + 1, history_length * sizeof (HIST_ENTRY *));
+-
+-      new_length = history_length;
+-      history_base++;
+-    }
+-  else
+-    {
+-      if (history_size == 0)
+-	{
+-	  if (history_stifled && history_max_entries > 0)
+-	    history_size = (history_max_entries > MAX_HISTORY_INITIAL_SIZE)
+-				? MAX_HISTORY_INITIAL_SIZE
+-				: history_max_entries + 2;
+-	  else
+-	    history_size = DEFAULT_HISTORY_INITIAL_SIZE;
+-	  the_history = (HIST_ENTRY **)xmalloc (history_size * sizeof (HIST_ENTRY *));
+-	  new_length = 1;
+-	}
+-      else
+-	{
+-	  if (history_length == (history_size - 1))
+-	    {
+-	      history_size += DEFAULT_HISTORY_GROW_SIZE;
+-	      the_history = (HIST_ENTRY **)
+-		xrealloc (the_history, history_size * sizeof (HIST_ENTRY *));
+-	    }
+-	  new_length = history_length + 1;
+-	}
++void add_history(const char *string) {
++    HIST_ENTRY *temp;
++    int new_length;
++
++    if (history_size == 0) {
++        if (history_stifled && history_max_entries > 0)
++            history_size = (history_max_entries > MAX_HISTORY_INITIAL_SIZE)
++                               ? MAX_HISTORY_INITIAL_SIZE
++                               : history_max_entries + 2;
++        else
++            history_size = DEFAULT_HISTORY_INITIAL_SIZE;
++        the_history =
++            (HIST_ENTRY **)xmalloc(history_size * sizeof(HIST_ENTRY *));
++        new_length = 1;
++    } else {
++        if (history_length == (history_size - 1)) {
++            history_size += DEFAULT_HISTORY_GROW_SIZE;
++            the_history = (HIST_ENTRY **)xrealloc(
++                the_history, history_size * sizeof(HIST_ENTRY *));
++        }
++        new_length = history_length + 1;
+     }
+ 
+-  temp = alloc_history_entry ((char *)string, hist_inittime ());
++    temp = alloc_history_entry((char *)string, hist_inittime());
+ 
+-  the_history[new_length] = (HIST_ENTRY *)NULL;
+-  the_history[new_length - 1] = temp;
+-  history_length = new_length;
++    the_history[new_length] = (HIST_ENTRY *)NULL;
++    the_history[new_length - 1] = temp;
++    history_length = new_length;
+ }
+ 
+ /* Change the time stamp of the most recent history entry to STRING. */
+@@ -547,26 +515,6 @@
+ void
+ stifle_history (int max)
+ {
+-  register int i, j;
+-
+-  if (max < 0)
+-    max = 0;
+-
+-  if (history_length > max)
+-    {
+-      /* This loses because we cannot free the data. */
+-      for (i = 0, j = history_length - max; i < j; i++)
+-	free_history_entry (the_history[i]);
+-
+-      history_base = i;
+-      for (j = 0, i = history_length - max; j < max; i++, j++)
+-	the_history[j] = the_history[i];
+-      the_history[j] = (HIST_ENTRY *)NULL;
+-      history_length = j;
+-    }
+-
+-  history_stifled = 1;
+-  max_input_history = history_max_entries = max;
+ }
+ 
+ /* Stop stifling the history.  This returns the previous maximum
+@@ -575,13 +523,7 @@
+ int
+ unstifle_history (void)
+ {
+-  if (history_stifled)
+-    {
+-      history_stifled = 0;
+-      return (history_max_entries);
+-    }
+-  else
+-    return (-history_max_entries);
++  return (-history_max_entries);
+ }
+ 
+ int
+diff --color -Naur bash-5.1-orig/variables.c bash-5.1-new/variables.c
+--- bash-5.1-orig/variables.c	2020-09-07 13:41:51.000000000 -0700
++++ bash-5.1-new/variables.c	2021-01-01 08:21:15.195259747 -0800
+@@ -597,7 +597,7 @@
+      that we are remembering commands on the history list. */
+   if (remember_on_history)
+     {
+-      name = bash_tilde_expand (posixly_correct ? "~/.sh_history" : "~/.bash_history", 0);
++      name = bash_tilde_expand (posixly_correct ? "~/.sh_history" : "~/.bash_full_history", 0);
+ 
+       set_if_not ("HISTFILE", name);
+       free (name);
+@@ -6016,39 +6016,6 @@
+ sv_histsize (name)
+      char *name;
+ {
+-  char *temp;
+-  intmax_t num;
+-  int hmax;
+-
+-  temp = get_string_value (name);
+-
+-  if (temp && *temp)
+-    {
+-      if (legal_number (temp, &num))
+-	{
+-	  hmax = num;
+-	  if (hmax < 0 && name[4] == 'S')
+-	    unstifle_history ();	/* unstifle history if HISTSIZE < 0 */
+-	  else if (name[4] == 'S')
+-	    {
+-	      stifle_history (hmax);
+-	      hmax = where_history ();
+-	      if (history_lines_this_session > hmax)
+-		history_lines_this_session = hmax;
+-	    }
+-	  else if (hmax >= 0)	/* truncate HISTFILE if HISTFILESIZE >= 0 */
+-	    {
+-	      history_truncate_file (get_string_value ("HISTFILE"), hmax);
+-	      /* If we just shrank the history file to fewer lines than we've
+-		 already read, make sure we adjust our idea of how many lines
+-		 we have read from the file. */
+-	      if (hmax < history_lines_in_file)
+-		history_lines_in_file = hmax;
+-	    }
+-	}
+-    }
+-  else if (name[4] == 'S')
+-    unstifle_history ();
+ }
+ 
+ /* What to do after the HISTIGNORE variable changes. */
